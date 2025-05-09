@@ -1,0 +1,10 @@
+sudo apt update
+sudo apt install python3-venv
+python3 -m venv tfenv
+source tfenv/bin/activate -- required setup 
+pip install 
+pip install tensorflow
+pip install notebook
+pip install scikit-learn
+
+jupyter notebook -- Required Cmd for 
