@@ -1,8 +1,9 @@
 #include <iostream>
 #include <vector>
-#include <thread>
-#include <future>
 #include <chrono>
+#include <functional>
+#include <omp.h>  // OpenMP
+
 using namespace std;
 
 void bubbleSort(vector<int>& arr) {
@@ -18,19 +19,20 @@ void bubbleSort(vector<int>& arr) {
 
 void parallelBubbleSort(vector<int>& arr) {
     int n = arr.size();
-    vector<future<void>> futures;
     for (int i = 0; i < n - 1; i++) {
+        // Parallelize inner loop with OpenMP
+        #pragma omp parallel for shared(arr)
         for (int j = 0; j < n - i - 1; j++) {
-            futures.push_back(async(launch::async, [&arr, j]() {
-                if (arr[j] > arr[j + 1]) {
-                    swap(arr[j], arr[j + 1]);
+            if (arr[j] > arr[j + 1]) {
+                // Use critical section to avoid race conditions while swapping
+                #pragma omp critical
+                {
+                    if (arr[j] > arr[j + 1]) {
+                        swap(arr[j], arr[j + 1]);
+                    }
                 }
-            }));
+            }
         }
-        for (auto& f : futures) {
-            f.get();
-        }
-        futures.clear();
     }
 }
 
@@ -75,10 +77,16 @@ void mergeSort(vector<int>& arr, int left, int right) {
 void parallelMergeSort(vector<int>& arr, int left, int right) {
     if (left < right) {
         int mid = (left + right) / 2;
-        future<void> leftFuture = async(launch::async, [&]() { parallelMergeSort(arr, left, mid); });
-        future<void> rightFuture = async(launch::async, [&]() { parallelMergeSort(arr, mid + 1, right); });
-        leftFuture.get();
-        rightFuture.get();
+
+        #pragma omp parallel sections
+        {
+            #pragma omp section
+            parallelMergeSort(arr, left, mid);
+
+            #pragma omp section
+            parallelMergeSort(arr, mid + 1, right);
+        }
+
         merge(arr, left, mid, right);
     }
 }
@@ -105,9 +113,9 @@ int main() {
     while (continueRunning) {
         cout << "\nChoose an option:" << endl;
         cout << "1. Sequential Bubble Sort" << endl;
-        cout << "2. Parallel Bubble Sort" << endl;
+        cout << "2. Parallel Bubble Sort (OpenMP)" << endl;
         cout << "3. Sequential Merge Sort" << endl;
-        cout << "4. Parallel Merge Sort" << endl;
+        cout << "4. Parallel Merge Sort (OpenMP)" << endl;
         cout << "5. Exit" << endl;
         cout << "Enter your choice: ";
         cin >> choice;
@@ -139,7 +147,7 @@ int main() {
                 break;
             }
             case 2: {
-                cout << "\nPerforming Parallel Bubble Sort..." << endl;
+                cout << "\nPerforming Parallel Bubble Sort (OpenMP)..." << endl;
                 vector<int> arrBubblePar = arr;
                 long long bubbleParTime = measureTime([&]() { parallelBubbleSort(arrBubblePar); });
                 cout << "Sorted Array: ";
@@ -157,7 +165,7 @@ int main() {
                 break;
             }
             case 4: {
-                cout << "\nPerforming Parallel Merge Sort..." << endl;
+                cout << "\nPerforming Parallel Merge Sort (OpenMP)..." << endl;
                 vector<int> arrMergePar = arr;
                 long long mergeParTime = measureTime([&]() { parallelMergeSort(arrMergePar, 0, arrMergePar.size() - 1); });
                 cout << "Sorted Array: ";
