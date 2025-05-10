@@ -1,193 +1,133 @@
 #include <iostream>
 #include <vector>
-#include <chrono>
-#include <functional>
-#include <omp.h>  // OpenMP
+#include <omp.h>
+#include <ctime>
 
 using namespace std;
 
-void bubbleSort(vector<int>& arr) {
+// Sequential Bubble Sort
+void bubbleSortSequential(vector<int>& arr) {
     int n = arr.size();
-    for (int i = 0; i < n - 1; i++) {
-        for (int j = 0; j < n - i - 1; j++) {
-            if (arr[j] > arr[j + 1]) {
-                swap(arr[j], arr[j + 1]);
+    bool swapped;
+    do {
+        swapped = false;
+        for (int i = 0; i < n - 1; i++) {
+            if (arr[i] > arr[i + 1]) {
+                swap(arr[i], arr[i + 1]);
+                swapped = true;
             }
         }
-    }
+    } while (swapped);
 }
 
-void parallelBubbleSort(vector<int>& arr) {
+// Parallel Bubble Sort
+void bubbleSortParallel(vector<int>& arr) {
     int n = arr.size();
-    for (int i = 0; i < n - 1; i++) {
-        // Parallelize inner loop with OpenMP
+    bool swapped = true;
+
+    while (swapped) {
+        swapped = false;
         #pragma omp parallel for shared(arr)
-        for (int j = 0; j < n - i - 1; j++) {
-            if (arr[j] > arr[j + 1]) {
-                // Use critical section to avoid race conditions while swapping
-                #pragma omp critical
-                {
-                    if (arr[j] > arr[j + 1]) {
-                        swap(arr[j], arr[j + 1]);
-                    }
-                }
+        for (int i = 0; i < n - 1; i += 2) { // Even phase
+            if (arr[i] > arr[i + 1]) {
+                swap(arr[i], arr[i + 1]);
+                swapped = true;
+            }
+        }
+
+        #pragma omp parallel for shared(arr)
+        for (int i = 1; i < n - 1; i += 2) { // Odd phase
+            if (arr[i] > arr[i + 1]) {
+                swap(arr[i], arr[i + 1]);
+                swapped = true;
             }
         }
     }
 }
 
-void merge(vector<int>& arr, int left, int mid, int right) {
-    int n1 = mid - left + 1;
-    int n2 = right - mid;
-    vector<int> leftArray(n1), rightArray(n2);
-    for (int i = 0; i < n1; i++) leftArray[i] = arr[left + i];
-    for (int j = 0; j < n2; j++) rightArray[j] = arr[mid + 1 + j];
-    int i = 0, j = 0, k = left;
-    while (i < n1 && j < n2) {
-        if (leftArray[i] <= rightArray[j]) {
-            arr[k] = leftArray[i];
-            i++;
-        } else {
-            arr[k] = rightArray[j];
-            j++;
-        }
-        k++;
+// Merge function for both versions
+void merge(vector<int>& arr, int l, int m, int r) {
+    vector<int> temp;
+    int i = l, j = m + 1;
+
+    while (i <= m && j <= r) {
+        if (arr[i] <= arr[j])
+            temp.push_back(arr[i++]);
+        else
+            temp.push_back(arr[j++]);
     }
-    while (i < n1) {
-        arr[k] = leftArray[i];
-        i++;
-        k++;
-    }
-    while (j < n2) {
-        arr[k] = rightArray[j];
-        j++;
-        k++;
+
+    while (i <= m) temp.push_back(arr[i++]);
+    while (j <= r) temp.push_back(arr[j++]);
+
+    for (int k = l; k <= r; k++)
+        arr[k] = temp[k - l];
+}
+
+// Sequential Merge Sort
+void mergeSortSequential(vector<int>& arr, int l, int r) {
+    if (l < r) {
+        int m = l + (r - l) / 2;
+        mergeSortSequential(arr, l, m);
+        mergeSortSequential(arr, m + 1, r);
+        merge(arr, l, m, r);
     }
 }
 
-void mergeSort(vector<int>& arr, int left, int right) {
-    if (left < right) {
-        int mid = (left + right) / 2;
-        mergeSort(arr, left, mid);
-        mergeSort(arr, mid + 1, right);
-        merge(arr, left, mid, right);
-    }
-}
-
-void parallelMergeSort(vector<int>& arr, int left, int right) {
-    if (left < right) {
-        int mid = (left + right) / 2;
-
+// Parallel Merge Sort
+void mergeSortParallel(vector<int>& arr, int l, int r) {
+    if (l < r) {
+        int m = l + (r - l) / 2;
         #pragma omp parallel sections
         {
             #pragma omp section
-            parallelMergeSort(arr, left, mid);
-
+            mergeSortParallel(arr, l, m);
             #pragma omp section
-            parallelMergeSort(arr, mid + 1, right);
+            mergeSortParallel(arr, m + 1, r);
         }
-
-        merge(arr, left, mid, right);
+        merge(arr, l, m, r);
     }
-}
-
-long long measureTime(function<void()> sortMethod) {
-    auto start = chrono::high_resolution_clock::now();
-    sortMethod();
-    auto end = chrono::high_resolution_clock::now();
-    auto duration = chrono::duration_cast<chrono::milliseconds>(end - start);
-    return duration.count();
-}
-
-void printArray(const vector<int>& arr) {
-    for (int num : arr) {
-        cout << num << " ";
-    }
-    cout << endl;
 }
 
 int main() {
-    int choice;
-    bool continueRunning = true;
+    int n;
+    cout << "Enter the number of elements: ";
+    cin >> n;
 
-    while (continueRunning) {
-        cout << "\nChoose an option:" << endl;
-        cout << "1. Sequential Bubble Sort" << endl;
-        cout << "2. Parallel Bubble Sort (OpenMP)" << endl;
-        cout << "3. Sequential Merge Sort" << endl;
-        cout << "4. Parallel Merge Sort (OpenMP)" << endl;
-        cout << "5. Exit" << endl;
-        cout << "Enter your choice: ";
-        cin >> choice;
+    vector<int> input(n);
+    cout << "Enter the elements: ";
+    for (int i = 0; i < n; i++)
+        cin >> input[i];
 
-        if (choice == 5) {
-            continueRunning = false;
-            cout << "Exited the program successfully" << endl;
-            break;
-        }
+    vector<int> arr;
 
-        int size;
-        cout << "Enter the number of elements: ";
-        cin >> size;
+    // Bubble Sort Sequential
+    arr = input;
+    clock_t t1 = clock();
+    bubbleSortSequential(arr);
+    clock_t t2 = clock();
+    cout << "Sequential Bubble Sort Time: " << double(t2 - t1) / CLOCKS_PER_SEC << " sec" << endl;
 
-        vector<int> arr(size);
-        cout << "Enter the " << size << " space-separated values of the array: ";
-        for (int i = 0; i < size; i++) {
-            cin >> arr[i];
-        }
+    // Bubble Sort Parallel
+    arr = input;
+    clock_t t3 = clock();
+    bubbleSortParallel(arr);
+    clock_t t4 = clock();
+    cout << "Parallel Bubble Sort Time: " << double(t4 - t3) / CLOCKS_PER_SEC << " sec" << endl;
 
-        switch (choice) {
-            case 1: {
-                cout << "\nPerforming Sequential Bubble Sort..." << endl;
-                vector<int> arrBubbleSeq = arr;
-                long long bubbleSeqTime = measureTime([&]() { bubbleSort(arrBubbleSeq); });
-                cout << "Sorted Array: ";
-                printArray(arrBubbleSeq);
-                cout << "Time taken: " << bubbleSeqTime << " ms" << endl;
-                break;
-            }
-            case 2: {
-                cout << "\nPerforming Parallel Bubble Sort (OpenMP)..." << endl;
-                vector<int> arrBubblePar = arr;
-                long long bubbleParTime = measureTime([&]() { parallelBubbleSort(arrBubblePar); });
-                cout << "Sorted Array: ";
-                printArray(arrBubblePar);
-                cout << "Time taken: " << bubbleParTime << " ms" << endl;
-                break;
-            }
-            case 3: {
-                cout << "\nPerforming Sequential Merge Sort..." << endl;
-                vector<int> arrMergeSeq = arr;
-                long long mergeSeqTime = measureTime([&]() { mergeSort(arrMergeSeq, 0, arrMergeSeq.size() - 1); });
-                cout << "Sorted Array: ";
-                printArray(arrMergeSeq);
-                cout << "Time taken: " << mergeSeqTime << " ms" << endl;
-                break;
-            }
-            case 4: {
-                cout << "\nPerforming Parallel Merge Sort (OpenMP)..." << endl;
-                vector<int> arrMergePar = arr;
-                long long mergeParTime = measureTime([&]() { parallelMergeSort(arrMergePar, 0, arrMergePar.size() - 1); });
-                cout << "Sorted Array: ";
-                printArray(arrMergePar);
-                cout << "Time taken: " << mergeParTime << " ms" << endl;
-                break;
-            }
-            default:
-                cout << "Invalid choice! Please choose a valid option." << endl;
-                break;
-        }
+    // Merge Sort Sequential
+    arr = input;
+    clock_t t5 = clock();
+    mergeSortSequential(arr, 0, n - 1);
+    clock_t t6 = clock();
+    cout << "Sequential Merge Sort Time: " << double(t6 - t5) / CLOCKS_PER_SEC << " sec" << endl;
 
-        if (continueRunning) {
-            cout << "\nDo you want to continue? (yes/no): ";
-            string userChoice;
-            cin >> userChoice;
-            if (userChoice == "no" || userChoice == "No") {
-                continueRunning = false;
-                cout << "Exited the program successfully" << endl;
-            }
-        }
-    }
+    // Merge Sort Parallel
+    arr = input;
+    clock_t t7 = clock();
+    mergeSortParallel(arr, 0, n - 1);
+    clock_t t8 = clock();
+    cout << "Parallel Merge Sort Time: " << double(t8 - t7) / CLOCKS_PER_SEC << " sec" << endl;
 
     return 0;
 }
